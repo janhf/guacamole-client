@@ -24,31 +24,11 @@
 
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.apache.guacamole</groupId>
-    <artifactId>guacamole-common</artifactId>
+    <artifactId>guacamole-auth-ldap-new</artifactId>
     <packaging>jar</packaging>
     <version>1.3.0</version>
-    <name>guacamole-common</name>
+    <name>guacamole-auth-ldap-new</name>
     <url>http://guacamole.apache.org/</url>
-
-    <description>
-        The base Java API of the Guacamole project, providing Java support for
-        the Guacamole stack.
-    </description>
-
-    <!-- All applicable licenses -->
-    <licenses>
-        <license>
-            <name>Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
-            <distribution>repo</distribution>
-        </license>
-    </licenses>
-
-    <!-- Git repository -->
-    <scm>
-        <url>https://github.com/apache/guacamole-client</url>
-        <connection>scm:git:https://git.wip-us.apache.org/repos/asf/guacamole-client.git</connection>
-    </scm>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -57,7 +37,7 @@
     <build>
         <plugins>
 
-            <!-- Written for 1.6 -->
+            <!-- Written for Java 1.8 -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -73,34 +53,43 @@
                 </configuration>
             </plugin>
 
-            <!-- Attach source jar -->
+            <!-- Copy dependencies prior to packaging -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-source-plugin</artifactId>
-                <version>2.4</version>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>2.10</version>
                 <executions>
                     <execution>
-                        <id>attach-sources</id>
+                        <id>unpack-dependencies</id>
+                        <phase>prepare-package</phase>
                         <goals>
-                            <goal>jar</goal>
+                            <goal>unpack-dependencies</goal>
                         </goals>
+                        <configuration>
+                            <includeScope>runtime</includeScope>
+                            <outputDirectory>${project.build.directory}/classes</outputDirectory>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>
 
-            <!-- Attach JavaDoc jar -->
+            <!-- Assembly plugin - for easy distribution -->
             <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-javadoc-plugin</artifactId>
-                <version>2.10.3</version>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.5.3</version>
                 <configuration>
-                    <detectOfflineLinks>false</detectOfflineLinks>
+                    <finalName>${project.artifactId}-${project.version}</finalName>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <descriptors>
+                        <descriptor>src/main/assembly/dist.xml</descriptor>
+                    </descriptors>
                 </configuration>
                 <executions>
                     <execution>
-                        <id>attach-javadocs</id>
+                        <id>make-dist-archive</id>
+                        <phase>package</phase>
                         <goals>
-                            <goal>jar</goal>
+                            <goal>single</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -111,6 +100,13 @@
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
                 <version>0.12</version>
+
+                <configuration>
+                    <excludes>
+                        <exclude>**/*.json</exclude>
+                        <exclude>src/licenses/**/*</exclude>
+                    </excludes>
+                </configuration>
 
                 <!-- Bind RAT to validate phase -->
                 <executions>
@@ -137,35 +133,37 @@
 
     <dependencies>
 
-        <!-- Java servlet API -->
+        <!-- Guacamole Extension API -->
         <dependency>
-            <groupId>javax.servlet</groupId>
-            <artifactId>servlet-api</artifactId>
-            <version>2.5</version>
+            <groupId>org.apache.guacamole</groupId>
+            <artifactId>guacamole-ext</artifactId>
+            <version>1.3.0</version>
             <scope>provided</scope>
         </dependency>
 
-        <!-- JSR 356 WebSocket API -->
+        <!-- Apache Directory LDAP API -->
         <dependency>
-            <groupId>javax.websocket</groupId>
-            <artifactId>javax.websocket-api</artifactId>
-            <version>1.0</version>
-            <scope>provided</scope>
+            <groupId>org.apache.directory.api</groupId>
+            <artifactId>api-all</artifactId>
+            <version>2.0.0.AM4</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
-        <!-- SLF4J - logging -->
+        <!-- Guice -->
         <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-            <version>1.7.7</version>
+            <groupId>com.google.inject</groupId>
+            <artifactId>guice</artifactId>
+            <version>3.0</version>
         </dependency>
-
-        <!-- JUnit -->
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.10</version>
-            <scope>test</scope>
+            <groupId>com.google.inject.extensions</groupId>
+            <artifactId>guice-multibindings</artifactId>
+            <version>3.0</version>
         </dependency>
 
     </dependencies>
