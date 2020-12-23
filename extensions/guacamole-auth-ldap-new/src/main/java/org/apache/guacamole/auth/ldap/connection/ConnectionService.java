@@ -77,6 +77,8 @@ public class ConnectionService {
      */
     @Inject
     private UserGroupService userGroupService;
+    
+    
 
     /**
      * Returns all Guacamole connections accessible to the user currently bound
@@ -277,5 +279,10 @@ public class ConnectionService {
 
         return searchFilter;
     }
+
+	public Connection findById(LdapNetworkConnection ldapConnection, String identifier) {
+		
+		return null;
+	}
 
 }

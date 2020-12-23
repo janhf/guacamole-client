@@ -53,18 +53,6 @@ public class LDAPUserContext extends AbstractUserContext {
     private ConnectionService connectionService;
 
     /**
-     * Service for retrieving Guacamole users from the LDAP server.
-     */
-    @Inject
-    private UserService userService;
-
-    /**
-     * Service for retrieving user groups.
-     */
-    @Inject
-    private UserGroupService userGroupService;
-
-    /**
      * Reference to the AuthenticationProvider associated with this
      * UserContext.
      */
@@ -76,18 +64,6 @@ public class LDAPUserContext extends AbstractUserContext {
      * dictates the users and connections visible through this UserContext.
      */
     private User self;
-
-    /**
-     * Directory containing all User objects accessible to the user associated
-     * with this UserContext.
-     */
-    private Directory<User> userDirectory;
-
-    /**
-     * Directory containing all UserGroup objects accessible to the user
-     * associated with this UserContext.
-     */
-    private Directory<UserGroup> userGroupDirectory;
 
     /**
      * Directory containing all Connection objects accessible to the user
@@ -120,16 +96,6 @@ public class LDAPUserContext extends AbstractUserContext {
     public void init(AuthenticatedUser user, LdapNetworkConnection ldapConnection)
             throws GuacamoleException {
 
-        // Query all accessible users
-        userDirectory = new SimpleDirectory<>(
-            userService.getUsers(ldapConnection)
-        );
-
-        // Query all accessible user groups
-        userGroupDirectory = new SimpleDirectory<>(
-            userGroupService.getUserGroups(ldapConnection)
-        );
-
         // Query all accessible connections
         connectionDirectory = new SimpleDirectory<>(
             connectionService.getConnections(user, ldapConnection)
@@ -144,30 +110,7 @@ public class LDAPUserContext extends AbstractUserContext {
         );
 
         // Init self with basic permissions
-        self = new SimpleUser(user.getIdentifier()) {
-
-            @Override
-            public ObjectPermissionSet getUserPermissions() throws GuacamoleException {
-                return new SimpleObjectPermissionSet(userDirectory.getIdentifiers());
-            }
-
-            @Override
-            public ObjectPermissionSet getUserGroupPermissions() throws GuacamoleException {
-                return new SimpleObjectPermissionSet(userGroupDirectory.getIdentifiers());
-            }
-
-            @Override
-            public ObjectPermissionSet getConnectionPermissions() throws GuacamoleException {
-                return new SimpleObjectPermissionSet(connectionDirectory.getIdentifiers());
-            }
-
-            @Override
-            public ObjectPermissionSet getConnectionGroupPermissions() throws GuacamoleException {
-                return new SimpleObjectPermissionSet(Collections.singleton(LDAPAuthenticationProvider.ROOT_CONNECTION_GROUP));
-            }
-
-        };
-
+        self = new LDAPUser(user, ldapConnection);
     }
 
     @Override
