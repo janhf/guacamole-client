@@ -63,7 +63,7 @@ public class SQLServerEnvironment extends JDBCEnvironment {
      * The default value for the default maximum number of connections to be
      * allowed per user to any one connection.
      */
-    private static final int DEFAULT_MAX_CONNECTIONS_PER_USER = 1;
+    private static final int DEFAULT_MAX_CONNECTIONS_PER_USER = 0;
 
     /**
      * The default value for the default maximum number of connections to be
@@ -89,10 +89,23 @@ public class SQLServerEnvironment extends JDBCEnvironment {
     public static final SQLServerDriver SQLSERVER_DEFAULT_DRIVER = SQLServerDriver.MICROSOFT_2005;
 
     /**
+     * The default maximum number of identifiers/parameters to be included in a
+     * single batch when executing SQL statements for SQL Server.
+     *
+     * SQL Server supports a maximum of 2100 parameters per query. A value of
+     * 500 is chosen to stay within this limit and avoid query execution errors,
+     * as some queries involve multiple parameters per item - namely retrieval
+     * of connections.
+     *
+     * @see https://docs.microsoft.com/en-us/sql/sql-server/maximum-capacity-specifications-for-sql-server
+     */
+    private static final int DEFAULT_BATCH_SIZE = 500;
+    
+    /**
      * Constructs a new SQLServerEnvironment, providing access to SQLServer-specific
      * configuration options.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If an error occurs while setting up the underlying JDBCEnvironment
      *     or while parsing legacy SQLServer configuration options.
      */
@@ -117,6 +130,13 @@ public class SQLServerEnvironment extends JDBCEnvironment {
             DEFAULT_ABSOLUTE_MAX_CONNECTIONS
         );
     }
+    
+    @Override
+    public int getBatchSize() throws GuacamoleException {
+        return getProperty(SQLServerGuacamoleProperties.SQLSERVER_BATCH_SIZE,
+            DEFAULT_BATCH_SIZE
+        );
+    }    
 
     @Override
     public int getDefaultMaxConnections() throws GuacamoleException {
@@ -158,11 +178,11 @@ public class SQLServerEnvironment extends JDBCEnvironment {
     /**
      * Returns the hostname of the SQLServer server hosting the Guacamole
      * authentication tables. If unspecified, this will be "localhost".
-     * 
+     *
      * @return
      *     The URL of the SQLServer server.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public String getSQLServerHostname() throws GuacamoleException {
@@ -171,15 +191,15 @@ public class SQLServerEnvironment extends JDBCEnvironment {
             DEFAULT_HOSTNAME
         );
     }
-    
+
     /**
      * Returns the instance name of the SQL Server installation hosting the
      * Guacamole database, if any.  If unspecified it will be null.
-     * 
+     *
      * @return
      *     The instance name of the SQL Server install hosting the Guacamole
      *     database, or null if undefined.
-     * 
+     *
      * @throws GuacamoleException
      *     If an error occurs reading guacamole.properties.
      */
@@ -188,16 +208,16 @@ public class SQLServerEnvironment extends JDBCEnvironment {
             SQLServerGuacamoleProperties.SQLSERVER_INSTANCE
         );
     }
-    
+
     /**
      * Returns the port number of the SQLServer server hosting the Guacamole
      * authentication tables. If unspecified, this will be the default
      * SQLServer port of 5432.
-     * 
+     *
      * @return
      *     The port number of the SQLServer server.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public int getSQLServerPort() throws GuacamoleException {
@@ -206,15 +226,15 @@ public class SQLServerEnvironment extends JDBCEnvironment {
             DEFAULT_PORT
         );
     }
-    
+
     /**
      * Returns the name of the SQLServer database containing the Guacamole
      * authentication tables.
-     * 
+     *
      * @return
      *     The name of the SQLServer database.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value, or if the
      *     value was not set, as this property is required.
      */
@@ -222,33 +242,13 @@ public class SQLServerEnvironment extends JDBCEnvironment {
         return getRequiredProperty(SQLServerGuacamoleProperties.SQLSERVER_DATABASE);
     }
 
-    /**
-     * Returns the username that should be used when authenticating with the
-     * SQLServer database containing the Guacamole authentication tables.
-     * 
-     * @return
-     *     The username for the SQLServer database.
-     *
-     * @throws GuacamoleException 
-     *     If an error occurs while retrieving the property value, or if the
-     *     value was not set, as this property is required.
-     */
-    public String getSQLServerUsername() throws GuacamoleException {
+    @Override
+    public String getUsername() throws GuacamoleException {
         return getRequiredProperty(SQLServerGuacamoleProperties.SQLSERVER_USERNAME);
     }
-    
-    /**
-     * Returns the password that should be used when authenticating with the
-     * SQLServer database containing the Guacamole authentication tables.
-     * 
-     * @return
-     *     The password for the SQLServer database.
-     *
-     * @throws GuacamoleException 
-     *     If an error occurs while retrieving the property value, or if the
-     *     value was not set, as this property is required.
-     */
-    public String getSQLServerPassword() throws GuacamoleException {
+
+    @Override
+    public String getPassword() throws GuacamoleException {
         return getRequiredProperty(SQLServerGuacamoleProperties.SQLSERVER_PASSWORD);
     }
 
@@ -273,11 +273,83 @@ public class SQLServerEnvironment extends JDBCEnvironment {
     public boolean isRecursiveQuerySupported(SqlSession session) {
         return true; // All versions of SQL Server support recursive queries through CTEs
     }
-    
+
     @Override
     public boolean autoCreateAbsentAccounts() throws GuacamoleException {
         return getProperty(SQLServerGuacamoleProperties.SQLSERVER_AUTO_CREATE_ACCOUNTS,
                 false);
+    }
+
+    @Override
+    public boolean trackExternalConnectionHistory() throws GuacamoleException {
+
+        // Track external connection history unless explicitly disabled
+        return getProperty(SQLServerGuacamoleProperties.SQLSERVER_TRACK_EXTERNAL_CONNECTION_HISTORY,
+                true);
+    }
+
+    @Override
+    public boolean enforceAccessWindowsForActiveSessions() throws GuacamoleException {
+
+        // Enforce access window restrictions for active sessions unless explicitly disabled
+        return getProperty(
+                SQLServerGuacamoleProperties.SQLSERVER_ENFORCE_ACCESS_WINDOWS_FOR_ACTIVE_SESSIONS,
+                true);
+    }
+
+    @Override
+    public boolean shouldUseBatchExecutor() {
+
+        // The SQL Server driver does not work when batch execution is enabled.
+        // Specifically, inserts fail with com.microsoft.sqlserver.jdbc.SQLServerException:
+        // The statement must be executed before any results can be obtained.
+        // See https://github.com/microsoft/mssql-jdbc/issues/358 for more.
+        logger.warn(
+                "JDBC batch executor is disabled for SQL Server Connections. "
+                + "Large batched updates may run slower."
+        );
+        return false;
+        
+    }
+
+    /**
+     * Returns true if all server certificates should be trusted, including
+     * those signed by an unknown certificate authority, such as self-signed
+     * certificates, or false otherwise.
+     *
+     * @throws GuacamoleException
+     *     If an error occurs while retrieving the property value, or if the
+     *     value was not set, as this property is required.
+     */
+    public boolean trustAllServerCertificates() throws GuacamoleException {
+
+        // Do not trust unknown certificates unless explicitly enabled
+        return getProperty(
+                SQLServerGuacamoleProperties.SQLSERVER_TRUST_ALL_SERVER_CERTIFICATES,
+                false);
+    }
+    
+    @Override
+    public boolean getCaseSensitiveUsernames() throws GuacamoleException {
+        
+        // Get the configured or default value of the property.
+        boolean caseSensitiveUsernames = getProperty(
+                SQLServerGuacamoleProperties.SQLSERVER_CASE_SENSITIVE_USERNAMES,
+                super.getCaseSensitiveUsernames()
+        );
+        
+        // If property has been set to true, warn the admin.
+        if (caseSensitiveUsernames)
+            logger.warn("You have configured this extension for case-sensitive "
+                        + "username comparisons, however, the default collations "
+                        + "for SQL Server databases do not support case-sensitive "
+                        + "string comparisons. Further database configuration may "
+                        + "be required in order for case-sensitive username "
+                        + "comparisons to function correctly.");
+        
+        // Return as configured
+        return caseSensitiveUsernames;
+        
     }
 
 }

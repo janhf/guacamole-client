@@ -69,8 +69,6 @@ public class SQLServerAuthenticationProviderModule implements Module {
         myBatisProperties.setProperty("JDBC.host", environment.getSQLServerHostname());
         myBatisProperties.setProperty("JDBC.port", String.valueOf(environment.getSQLServerPort()));
         myBatisProperties.setProperty("JDBC.schema", environment.getSQLServerDatabase());
-        myBatisProperties.setProperty("JDBC.username", environment.getSQLServerUsername());
-        myBatisProperties.setProperty("JDBC.password", environment.getSQLServerPassword());
         
         myBatisProperties.setProperty("JDBC.autoCommit", "false");
         myBatisProperties.setProperty("mybatis.pooled.pingEnabled", "true");
@@ -78,6 +76,10 @@ public class SQLServerAuthenticationProviderModule implements Module {
 
         // Use UTF-8 in database
         driverProperties.setProperty("characterEncoding", "UTF-8");
+
+        // Trust unknown server certificates if configured to do so
+        if (environment.trustAllServerCertificates())
+            driverProperties.setProperty("trustServerCertificate", "true");
         
         // Retrieve instance name and set it
         String instance = environment.getSQLServerInstance();

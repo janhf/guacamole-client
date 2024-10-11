@@ -81,7 +81,7 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
      * dictate the values that should be used in the absence of the correct
      * properties.
      */
-    private final int DEFAULT_MAX_CONNECTIONS_PER_USER = 1;
+    private final int DEFAULT_MAX_CONNECTIONS_PER_USER = 0;
 
     /**
      * The default value for the default maximum number of connections to be
@@ -110,17 +110,29 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
      * the values that should be used in the absence of the correct properties.
      */
     private final int DEFAULT_MAX_GROUP_CONNECTIONS = 0;
-    
+
     /**
      * The default value to use for SSL mode if none is explicitly configured.
      */
     private final PostgreSQLSSLMode DEFAULT_SSL_MODE = PostgreSQLSSLMode.PREFER;
+    
+    /**
+     * The default maximum number of identifiers/parameters to be included in a 
+     * single batch when executing SQL statements for PostgreSQL.
+     * 
+     * PostgreSQL has a maximum limit of 65535 parameters per prepared statement.
+     * A value of 5000 is chosen to avoid potential performance issues or query
+     * execution errors while staying well below the maximum limit.
+     *
+     * @see https://www.postgresql.org/docs/current/runtime-config-resource.html#GUC-MAX-PREPARED-STATEMENT-ARGS
+     */
+    private static final int DEFAULT_BATCH_SIZE = 5000;
 
     /**
      * Constructs a new PostgreSQLEnvironment, providing access to PostgreSQL-specific
      * configuration options.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If an error occurs while setting up the underlying JDBCEnvironment
      *     or while parsing legacy PostgreSQL configuration options.
      */
@@ -146,6 +158,13 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
         );
     }
 
+    @Override
+    public int getBatchSize() throws GuacamoleException {
+        return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_BATCH_SIZE,
+            DEFAULT_BATCH_SIZE
+        );
+    }    
+    
     @Override
     public int getDefaultMaxConnections() throws GuacamoleException {
         return getProperty(
@@ -186,11 +205,11 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
     /**
      * Returns the hostname of the PostgreSQL server hosting the Guacamole
      * authentication tables. If unspecified, this will be "localhost".
-     * 
+     *
      * @return
      *     The URL of the PostgreSQL server.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public String getPostgreSQLHostname() throws GuacamoleException {
@@ -199,16 +218,16 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
             DEFAULT_HOSTNAME
         );
     }
-    
+
     /**
      * Returns the port number of the PostgreSQL server hosting the Guacamole
      * authentication tables. If unspecified, this will be the default
      * PostgreSQL port of 5432.
-     * 
+     *
      * @return
      *     The port number of the PostgreSQL server.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public int getPostgreSQLPort() throws GuacamoleException {
@@ -217,61 +236,41 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
             DEFAULT_PORT
         );
     }
-    
+
     /**
      * Returns the name of the PostgreSQL database containing the Guacamole
      * authentication tables.
-     * 
+     *
      * @return
      *     The name of the PostgreSQL database.
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value, or if the
      *     value was not set, as this property is required.
      */
     public String getPostgreSQLDatabase() throws GuacamoleException {
         return getRequiredProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_DATABASE);
     }
-    
-    /**
-     * Returns the username that should be used when authenticating with the
-     * PostgreSQL database containing the Guacamole authentication tables.
-     * 
-     * @return
-     *     The username for the PostgreSQL database.
-     *
-     * @throws GuacamoleException 
-     *     If an error occurs while retrieving the property value, or if the
-     *     value was not set, as this property is required.
-     */
-    public String getPostgreSQLUsername() throws GuacamoleException {
+
+    @Override
+    public String getUsername() throws GuacamoleException {
         return getRequiredProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_USERNAME);
     }
-    
-    /**
-     * Returns the password that should be used when authenticating with the
-     * PostgreSQL database containing the Guacamole authentication tables.
-     * 
-     * @return
-     *     The password for the PostgreSQL database.
-     *
-     * @throws GuacamoleException 
-     *     If an error occurs while retrieving the property value, or if the
-     *     value was not set, as this property is required.
-     */
-    public String getPostgreSQLPassword() throws GuacamoleException {
+
+    @Override
+    public String getPassword() throws GuacamoleException {
         return getRequiredProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_PASSWORD);
     }
-    
+
     /**
      * Returns the defaultStatementTimeout set for PostgreSQL connections.
      * If unspecified, this will default to 0,
      * and should not be passed through to the backend.
-     * 
+     *
      * @return
      *     The statement timeout (in seconds)
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public int getPostgreSQLDefaultStatementTimeout() throws GuacamoleException {
@@ -280,15 +279,15 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
             DEFAULT_STATEMENT_TIMEOUT
         );
     }
-    
+
     /**
      * Returns the socketTimeout property to set on PostgreSQL connections.
      * If unspecified, this will default to 0 (no timeout)
-     * 
+     *
      * @return
      *     The socketTimeout to use when waiting on read operations (in seconds)
      *
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs while retrieving the property value.
      */
     public int getPostgreSQLSocketTimeout() throws GuacamoleException {
@@ -302,85 +301,117 @@ public class PostgreSQLEnvironment extends JDBCEnvironment {
     public boolean isRecursiveQuerySupported(SqlSession session) {
         return true; // All versions of PostgreSQL support recursive queries through CTEs
     }
-    
+
     /**
      * Get the SSL mode to use to make the JDBC connection to the PostgreSQL
      * server.  If unspecified this will default to PREFER, attempting SSL
      * and falling back to plain-text if SSL fails.
-     * 
+     *
      * @return
      *     The enum value of the SSL mode to use to make the JDBC connection
      *     to the server.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If an error occurs retrieving the value from guacamole.properties.
      */
     public PostgreSQLSSLMode getPostgreSQLSSLMode() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_SSL_MODE,
                 DEFAULT_SSL_MODE);
     }
-    
+
     /**
      * Return the SSL client certificate file to use to make the connection
      * to the PostgreSQL server.
-     * 
+     *
      * @return
      *     The SSL client certificate file to use for the PostgreSQL connection.
-     * 
+     *
      * @throws GuacamoleException
      *     If an error occurs retrieving the value from guacamole.properties.
      */
     public File getPostgreSQLSSLClientCertFile() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_SSL_CERT_FILE);
     }
-    
+
     /**
      * Return the SSL client private key file to use to make the connection to the
      * PostgreSQL server.
-     * 
+     *
      * @return
      *     The SSL client private key file to use for the PostgreSQL connection.
-     * @throws GuacamoleException 
+     * @throws GuacamoleException
      *     If an error occurs retrieving the value from guacamole.properties.
      */
     public File getPostgreSQLSSLClientKeyFile() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_SSL_KEY_FILE);
     }
-    
+
     /**
      * Return the SSL client root certificate file to use to make the connection
      * to the PostgreSQL server.
-     * 
+     *
      * @return
      *     The SSL client root certificate file to use to make the connection
      *     to the PostgreSQL server.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If an error occurs retrieving the value from guacamole.properties.
      */
     public File getPostgreSQLSSLClientRootCertFile() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_SSL_ROOT_CERT_FILE);
     }
-    
+
     /**
      * Return the password to use to decrypt the private SSL key file when making
      * the connection to the PostgreSQL server.
-     * 
+     *
      * @return
      *     The password to use to decrypt the private SSL key file when making
      *     the connection to the PostgreSQL server.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If an error occurs retrieving the value from guacamole.properties.
      */
     public String getPostgreSQLSSLClientKeyPassword() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_SSL_KEY_PASSWORD);
     }
-    
+
     @Override
     public boolean autoCreateAbsentAccounts() throws GuacamoleException {
         return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_AUTO_CREATE_ACCOUNTS,
                 false);
     }
+
+    @Override
+    public boolean trackExternalConnectionHistory() throws GuacamoleException {
+
+        // Track external connection history unless explicitly disabled
+        return getProperty(PostgreSQLGuacamoleProperties.POSTGRESQL_TRACK_EXTERNAL_CONNECTION_HISTORY,
+                true);
+    }
+
+    @Override
+    public boolean enforceAccessWindowsForActiveSessions() throws GuacamoleException {
+
+        // Enforce access window restrictions for active sessions unless explicitly disabled
+        return getProperty(
+                PostgreSQLGuacamoleProperties.POSTGRESQL_ENFORCE_ACCESS_WINDOWS_FOR_ACTIVE_SESSIONS,
+                true);
+    }
     
+    @Override
+    public boolean getCaseSensitiveUsernames() throws GuacamoleException {
+        
+        // By default, PostgreSQL does perform case-sensitive string comparisons.
+        // Even though usernames are generally not case-sensitive across
+        // most authenticaiton systems, we've elected to maintain case-
+        // sensitivity in this module in order to avoid surprising anyone who
+        // may be relying upon it.
+        return getProperty(
+                PostgreSQLGuacamoleProperties.POSTGRESQL_CASE_SENSITIVE_USERNAMES,
+                super.getCaseSensitiveUsernames()
+        );
+        
+    }
+
 }

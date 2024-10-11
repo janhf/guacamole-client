@@ -12,6 +12,10 @@
                 {
                     "name"  : "port",
                     "type"  : "NUMERIC"
+                },
+                {
+                    "name"  : "timeout",
+                    "type"  : "NUMERIC"
                 }
             ]
         },
@@ -45,6 +49,15 @@
                     "name"    : "ignore-cert",
                     "type"    : "BOOLEAN",
                     "options" : [ "true" ]
+                },
+                {
+                    "name"    : "cert-tofu",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "true" ]
+                },
+                {
+                    "name"    : "cert-fingerprints",
+                    "type"    : "TEXT"
                 }
             ]
         },
@@ -100,11 +113,16 @@
                         "failsafe",
                         "fr-be-azerty",
                         "fr-fr-azerty",
+                        "fr-ca-qwerty",
                         "fr-ch-qwertz",
                         "hu-hu-qwertz",                        
                         "it-it-qwerty",
                         "ja-jp-qwerty",
+                        "no-no-qwerty",
+                        "pl-pl-qwerty",
                         "pt-br-qwerty",
+                        "pt-pt-qwerty",
+                        "ro-ro-qwerty",
                         "sv-se-qwerty",
                         "da-dk-qwerty",
                         "tr-tr-qwerty"
@@ -113,6 +131,11 @@
                 {
                     "name"  : "timezone",
                     "type"  : "TIMEZONE"
+                },
+                {
+                    "name"    : "enable-touch",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "true" ]
                 },
                 {
                     "name"    : "console",
@@ -143,6 +166,11 @@
                     "options" : [ "", "8", "16", "24", "32" ]
                 },
                 {
+                    "name"    : "force-lossless",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "true" ]
+                },
+                {
                     "name"    : "resize-method",
                     "type"    : "ENUM",
                     "options" : [ "", "reconnect", "display-update" ]
@@ -158,6 +186,11 @@
         {
             "name"  : "clipboard",
             "fields" : [
+                {
+                    "name"    : "normalize-clipboard",
+                    "type"    : "ENUM",
+                    "options" : [ "", "preserve", "unix", "windows" ]
+                },
                 {
                     "name"    : "disable-copy",
                     "type"    : "BOOLEAN",
@@ -280,6 +313,11 @@
                     "name"    : "disable-glyph-caching",
                     "type"    : "BOOLEAN",
                     "options" : [ "true" ]
+                },
+                {
+                    "name"    : "disable-gfx",
+                    "type"    : "BOOLEAN",
+                    "options" : [ "true" ]
                 }
             ]
         },
@@ -348,12 +386,22 @@
                     "options" : [ "true" ]
                 },
                 {
+                    "name"  : "recording-exclude-touch",
+                    "type"  : "BOOLEAN",
+                    "options" : [ "true" ]
+                },
+                {
                     "name"  : "recording-include-keys",
                     "type"  : "BOOLEAN",
                     "options" : [ "true" ]
                 },
                 {
                     "name"  : "create-recording-path",
+                    "type"  : "BOOLEAN",
+                    "options" : [ "true" ]
+                },
+                {
+                    "name"  : "recording-write-existing",
                     "type"  : "BOOLEAN",
                     "options" : [ "true" ]
                 }
@@ -377,6 +425,10 @@
                     "type"  : "NUMERIC"
                 },
                 {
+                    "name"  : "sftp-timeout",
+                    "type"  : "NUMERIC"
+                },
+                {
                     "name"  : "sftp-host-key",
                     "type"  : "TEXT"
                 },
@@ -395,6 +447,10 @@
                 {
                     "name"  : "sftp-passphrase",
                     "type"  : "PASSWORD"
+                },
+                {
+                    "name"  : "sftp-public-key",
+                    "type"  : "MULTILINE"
                 },
                 {
                     "name"  : "sftp-root-directory",
@@ -436,6 +492,10 @@
                 {
                     "name" : "wol-broadcast-addr",
                     "type" : "TEXT"
+                },
+                {
+                    "name" : "wol-udp-port",
+                    "type" : "NUMERIC"
                 },
                 {
                     "name" : "wol-wait-time",

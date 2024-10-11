@@ -19,11 +19,10 @@
 
 package org.apache.guacamole.rest.auth;
 
-import com.google.inject.Inject;
 import java.util.Iterator;
 import java.util.List;
+import javax.inject.Inject;
 
-import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.net.auth.AuthenticatedUser;
 import org.apache.guacamole.net.auth.AuthenticationProvider;
 import org.apache.guacamole.net.auth.Credentials;
@@ -44,7 +43,7 @@ public class DecorationService {
     private List<AuthenticationProvider> authProviders;
 
     /**
-     * Creates a new DecoratedUserContext, invoking the the decorate() function
+     * Creates a new DecoratedUserContext, invoking the decorate() function
      * of all AuthenticationProviders to decorate the provided UserContext.
      * Decoration by each AuthenticationProvider will occur in the order that
      * the AuthenticationProviders were loaded. Only AuthenticationProviders
@@ -65,12 +64,12 @@ public class DecorationService {
      *     A new DecoratedUserContext which has been decorated by all
      *     AuthenticationProviders.
      *
-     * @throws GuacamoleException
+     * @throws GuacamoleAuthenticationProcessException
      *     If any AuthenticationProvider fails while decorating the UserContext.
      */
     public DecoratedUserContext decorate(UserContext userContext,
             AuthenticatedUser authenticatedUser, Credentials credentials)
-            throws GuacamoleException {
+            throws GuacamoleAuthenticationProcessException {
 
         // Get first AuthenticationProvider in list
         Iterator<AuthenticationProvider> current = authProviders.iterator();
@@ -94,11 +93,11 @@ public class DecorationService {
     }
 
     /**
-     * Creates a new DecoratedUserContext, invoking the the redecorate()
-     * function of all AuthenticationProviders to reapply decoration. Decoration
-     * by each AuthenticationProvider will occur in the order that the
-     * AuthenticationProviders were loaded. Only AuthenticationProviders which
-     * did not originate the given UserContext will be used.
+     * Creates a new DecoratedUserContext, invoking the redecorate() function
+     * of all AuthenticationProviders to reapply decoration. Decoration by each
+     * AuthenticationProvider will occur in the order that the AuthenticationProviders
+     * were loaded. Only AuthenticationProviders which did not originate the given
+     * UserContext will be used.
      *
      * @param decorated
      *     The DecoratedUserContext associated with an older version of the
@@ -119,12 +118,12 @@ public class DecorationService {
      *     A new DecoratedUserContext which has been decorated by all
      *     AuthenticationProviders.
      *
-     * @throws GuacamoleException
+     * @throws GuacamoleAuthenticationProcessException
      *     If any AuthenticationProvider fails while decorating the UserContext.
      */
     public DecoratedUserContext redecorate(DecoratedUserContext decorated,
             UserContext userContext, AuthenticatedUser authenticatedUser,
-            Credentials credentials) throws GuacamoleException {
+            Credentials credentials) throws GuacamoleAuthenticationProcessException {
 
         // If the given DecoratedUserContext contains further decorated layers,
         // redecorate those first

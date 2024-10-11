@@ -30,13 +30,13 @@ import java.util.Calendar;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
 import org.apache.guacamole.auth.jdbc.security.PasswordEncryptionService;
 import org.apache.guacamole.auth.jdbc.security.SaltService;
 import org.apache.guacamole.GuacamoleException;
+import org.apache.guacamole.auth.jdbc.JDBCEnvironment;
 import org.apache.guacamole.auth.jdbc.base.ModeledPermissions;
 import org.apache.guacamole.form.BooleanField;
 import org.apache.guacamole.form.DateField;
@@ -63,12 +63,6 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      * Logger for this class.
      */
     private static final Logger logger = LoggerFactory.getLogger(ModeledUser.class);
-
-    /**
-     * The name of the attribute which controls whether a user account is
-     * disabled.
-     */
-    public static final String DISABLED_ATTRIBUTE_NAME = "disabled";
 
     /**
      * The name of the attribute which controls whether a user's password is
@@ -122,7 +116,6 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      * form.
      */
     public static final Form ACCOUNT_RESTRICTIONS = new Form("restrictions", Arrays.<Field>asList(
-        new BooleanField(DISABLED_ATTRIBUTE_NAME, "true"),
         new BooleanField(EXPIRED_ATTRIBUTE_NAME, "true"),
         new TimeField(ACCESS_WINDOW_START_ATTRIBUTE_NAME),
         new TimeField(ACCESS_WINDOW_END_ATTRIBUTE_NAME),
@@ -139,7 +132,7 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
         PROFILE,
         ACCOUNT_RESTRICTIONS
     ));
-
+    
     /**
      * The names of all attributes which are explicitly supported by this
      * extension's User objects.
@@ -150,7 +143,6 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
                 User.Attribute.EMAIL_ADDRESS,
                 User.Attribute.ORGANIZATION,
                 User.Attribute.ORGANIZATIONAL_ROLE,
-                DISABLED_ATTRIBUTE_NAME,
                 EXPIRED_ATTRIBUTE_NAME,
                 ACCESS_WINDOW_START_ATTRIBUTE_NAME,
                 ACCESS_WINDOW_END_ATTRIBUTE_NAME,
@@ -189,6 +181,13 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      */
     @Inject
     private Provider<UserRecordSet> userRecordSetProvider;
+    
+    /**
+     * The environment associated with this instance of the JDBC authentication
+     * module.
+     */
+    @Inject
+    private JDBCEnvironment environment;
 
     /**
      * Whether attributes which control access restrictions should be exposed
@@ -282,6 +281,16 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
         userModel.setPasswordDate(new Timestamp(System.currentTimeMillis()));
 
     }
+    
+    @Override
+    public boolean isDisabled() {
+        return getModel().isDisabled();
+    }
+    
+    @Override
+    public void setDisabled(boolean disabled) {
+        getModel().setDisabled(disabled);
+    }
 
     /**
      * Returns the this user's current password record. If the user is new, this
@@ -309,9 +318,6 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      *     The Map to store all restricted attributes within.
      */
     private void putRestrictedAttributes(Map<String, String> attributes) {
-
-        // Set disabled attribute
-        attributes.put(DISABLED_ATTRIBUTE_NAME, getModel().isDisabled() ? "true" : null);
 
         // Set password expired attribute
         attributes.put(EXPIRED_ATTRIBUTE_NAME, getModel().isExpired() ? "true" : null);
@@ -425,42 +431,49 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      */
     private void setRestrictedAttributes(Map<String, String> attributes) {
 
-        // Translate disabled attribute
-        getModel().setDisabled("true".equals(attributes.get(DISABLED_ATTRIBUTE_NAME)));
-
         // Translate password expired attribute
-        getModel().setExpired("true".equals(attributes.get(EXPIRED_ATTRIBUTE_NAME)));
+        if (attributes.containsKey(EXPIRED_ATTRIBUTE_NAME))
+            getModel().setExpired("true".equals(attributes.get(EXPIRED_ATTRIBUTE_NAME)));
 
         // Translate access window start time
-        try { getModel().setAccessWindowStart(parseTime(attributes.get(ACCESS_WINDOW_START_ATTRIBUTE_NAME))); }
-        catch (ParseException e) {
-            logger.warn("Not setting start time of user access window: {}", e.getMessage());
-            logger.debug("Unable to parse time attribute.", e);
+        if (attributes.containsKey(ACCESS_WINDOW_START_ATTRIBUTE_NAME)) {
+            try { getModel().setAccessWindowStart(parseTime(attributes.get(ACCESS_WINDOW_START_ATTRIBUTE_NAME))); }
+            catch (ParseException e) {
+                logger.warn("Not setting start time of user access window: {}", e.getMessage());
+                logger.debug("Unable to parse time attribute.", e);
+            }
         }
 
         // Translate access window end time
-        try { getModel().setAccessWindowEnd(parseTime(attributes.get(ACCESS_WINDOW_END_ATTRIBUTE_NAME))); }
-        catch (ParseException e) {
-            logger.warn("Not setting end time of user access window: {}", e.getMessage());
-            logger.debug("Unable to parse time attribute.", e);
+        if (attributes.containsKey(ACCESS_WINDOW_END_ATTRIBUTE_NAME)) {
+            try { getModel().setAccessWindowEnd(parseTime(attributes.get(ACCESS_WINDOW_END_ATTRIBUTE_NAME))); }
+            catch (ParseException e) {
+                logger.warn("Not setting end time of user access window: {}", e.getMessage());
+                logger.debug("Unable to parse time attribute.", e);
+            }
         }
 
         // Translate account validity start date
-        try { getModel().setValidFrom(parseDate(attributes.get(VALID_FROM_ATTRIBUTE_NAME))); }
-        catch (ParseException e) {
-            logger.warn("Not setting user validity start date: {}", e.getMessage());
-            logger.debug("Unable to parse date attribute.", e);
+        if (attributes.containsKey(VALID_FROM_ATTRIBUTE_NAME)) {
+            try { getModel().setValidFrom(parseDate(attributes.get(VALID_FROM_ATTRIBUTE_NAME))); }
+            catch (ParseException e) {
+                logger.warn("Not setting user validity start date: {}", e.getMessage());
+                logger.debug("Unable to parse date attribute.", e);
+            }
         }
 
         // Translate account validity end date
-        try { getModel().setValidUntil(parseDate(attributes.get(VALID_UNTIL_ATTRIBUTE_NAME))); }
-        catch (ParseException e) {
-            logger.warn("Not setting user validity end date: {}", e.getMessage());
-            logger.debug("Unable to parse date attribute.", e);
+        if (attributes.containsKey(VALID_UNTIL_ATTRIBUTE_NAME)) {
+            try { getModel().setValidUntil(parseDate(attributes.get(VALID_UNTIL_ATTRIBUTE_NAME))); }
+            catch (ParseException e) {
+                logger.warn("Not setting user validity end date: {}", e.getMessage());
+                logger.debug("Unable to parse date attribute.", e);
+            }
         }
 
         // Translate timezone attribute
-        getModel().setTimeZone(TimeZoneField.parse(attributes.get(TIMEZONE_ATTRIBUTE_NAME)));
+        if (attributes.containsKey(TIMEZONE_ATTRIBUTE_NAME))
+            getModel().setTimeZone(TimeZoneField.parse(attributes.get(TIMEZONE_ATTRIBUTE_NAME)));
 
     }
 
@@ -474,16 +487,20 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
     private void setUnrestrictedAttributes(Map<String, String> attributes) {
 
         // Translate full name attribute
-        getModel().setFullName(TextField.parse(attributes.get(User.Attribute.FULL_NAME)));
+        if (attributes.containsKey(User.Attribute.FULL_NAME))
+            getModel().setFullName(TextField.parse(attributes.get(User.Attribute.FULL_NAME)));
 
         // Translate email address attribute
-        getModel().setEmailAddress(TextField.parse(attributes.get(User.Attribute.EMAIL_ADDRESS)));
+        if (attributes.containsKey(User.Attribute.EMAIL_ADDRESS))
+            getModel().setEmailAddress(TextField.parse(attributes.get(User.Attribute.EMAIL_ADDRESS)));
 
         // Translate organization attribute
-        getModel().setOrganization(TextField.parse(attributes.get(User.Attribute.ORGANIZATION)));
+        if (attributes.containsKey(User.Attribute.ORGANIZATION))
+            getModel().setOrganization(TextField.parse(attributes.get(User.Attribute.ORGANIZATION)));
 
         // Translate role attribute
-        getModel().setOrganizationalRole(TextField.parse(attributes.get(User.Attribute.ORGANIZATIONAL_ROLE)));
+        if (attributes.containsKey(User.Attribute.ORGANIZATIONAL_ROLE))
+            getModel().setOrganizationalRole(TextField.parse(attributes.get(User.Attribute.ORGANIZATIONAL_ROLE)));
 
     }
 
@@ -724,19 +741,6 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
     }
 
     /**
-     * Returns whether this user account has been disabled. The credentials of
-     * disabled user accounts are treated as invalid, effectively disabling
-     * that user's access to data for which they would otherwise have
-     * permission.
-     *
-     * @return
-     *     true if this user account has been disabled, false otherwise.
-     */
-    public boolean isDisabled() {
-        return getModel().isDisabled();
-    }
-
-    /**
      * Returns whether this user's password has expired. If a user's password
      * is expired, it must be immediately changed upon login. A user account
      * with an expired password cannot be used until the password has been
@@ -783,6 +787,19 @@ public class ModeledUser extends ModeledPermissions<UserModel> implements User {
      */
     public boolean isSkeleton() {
         return (getModel().getEntityID() == null);
+    }
+    
+    @Override
+    public boolean isCaseSensitive() {
+        try {
+            return environment.getCaseSensitiveUsernames();
+        }
+        catch (GuacamoleException e) {
+            logger.error("Failed to retrieve the configuration for case-sensitive usernames: {}."
+                    + " Usernames comparisons will be case-sensitive.", e.getMessage());
+            logger.debug("Exception caught when attempting to read the configuration.", e);
+            return true;
+        }
     }
 
 }

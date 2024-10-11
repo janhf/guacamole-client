@@ -19,17 +19,18 @@
 
 package org.apache.guacamole.rest.user;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import java.util.Date;
 import java.util.Map;
-import org.codehaus.jackson.annotate.JsonIgnoreProperties;
-import org.codehaus.jackson.map.annotate.JsonSerialize;
 import org.apache.guacamole.net.auth.User;
 
 /**
  * A simple User to expose through the REST endpoints.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-@JsonSerialize(include=JsonSerialize.Inclusion.NON_NULL)
+@JsonInclude(value=Include.NON_NULL)
 public class APIUser {
     
     /**
@@ -41,6 +42,11 @@ public class APIUser {
      * The password of this user.
      */
     private String password;
+    
+    /**
+     * Boolean value indicating whether or not this user account is disabled.
+     */
+    private boolean disabled;
     
     /**
      * Map of all associated attributes by attribute identifier.
@@ -60,7 +66,9 @@ public class APIUser {
     
     /**
      * Construct a new APIUser from the provided User.
-     * @param user The User to construct the APIUser from.
+     * 
+     * @param user
+     *     The User to construct the APIUser from.
      */
     public APIUser(User user) {
 
@@ -68,6 +76,7 @@ public class APIUser {
         this.username = user.getIdentifier();
         this.password = user.getPassword();
         this.lastActive = user.getLastActive();
+        this.disabled = user.isDisabled();
 
         // Associate any attributes
         this.attributes = user.getAttributes();
@@ -76,7 +85,9 @@ public class APIUser {
 
     /**
      * Returns the username for this user.
-     * @return The username for this user. 
+     * 
+     * @return
+     *     The username for this user. 
      */
     public String getUsername() {
         return username;
@@ -84,7 +95,9 @@ public class APIUser {
 
     /**
      * Set the username for this user.
-     * @param username The username for this user.
+     * 
+     * @param username
+     *     The username for this user.
      */
     public void setUsername(String username) {
         this.username = username;
@@ -92,7 +105,9 @@ public class APIUser {
 
     /**
      * Returns the password for this user.
-     * @return The password for this user.
+     * 
+     * @return
+     *     The password for this user.
      */
     public String getPassword() {
         return password;
@@ -100,10 +115,33 @@ public class APIUser {
 
     /**
      * Set the password for this user.
-     * @param password The password for this user.
+     * 
+     * @param password
+     *     The password for this user.
      */
     public void setPassword(String password) {
         this.password = password;
+    }
+    
+    /**
+     * Returns true if this user account is disabled, otherwise false.
+     * 
+     * @return 
+     *     True if this user account is disabled, otherwise false.
+     */
+    public boolean isDisabled() {
+        return disabled;
+    }
+    
+    /**
+     * Sets the disabled status of this user account, disabling the account
+     * if set to true.
+     * 
+     * @param disabled 
+     *     True if this user account should be disabled.
+     */
+    public void setDisabled(boolean disabled) {
+        this.disabled = disabled;
     }
 
     /**

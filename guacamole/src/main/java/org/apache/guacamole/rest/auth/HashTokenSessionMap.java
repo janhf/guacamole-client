@@ -94,7 +94,8 @@ public class HashTokenSessionMap implements TokenSessionMap {
 
     /**
      * Task which iterates through all active sessions, evicting those sessions
-     * which are beyond the session timeout.
+     * which are beyond the session timeout, or are marked as invalid by an
+     * extension.
      */
     private class SessionEvictionTask implements Runnable {
 
@@ -105,7 +106,8 @@ public class HashTokenSessionMap implements TokenSessionMap {
 
         /**
          * Creates a new task which automatically evicts sessions which are
-         * older than the specified timeout.
+         * older than the specified timeout, or are marked as invalid by an
+         * extension.
          * 
          * @param sessionTimeout The maximum age of any session, in
          *                       milliseconds.
@@ -113,14 +115,19 @@ public class HashTokenSessionMap implements TokenSessionMap {
         public SessionEvictionTask(long sessionTimeout) {
             this.sessionTimeout = sessionTimeout;
         }
-        
-        @Override
-        public void run() {
+
+        /**
+         * Iterates through all active sessions, evicting those sessions which
+         * are beyond the session timeout, or are marked as invalid. Internal
+         * errors which would otherwise stop the session eviction process are
+         * caught, logged, and the process is allowed to proceed.
+         */
+        private void evictExpiredOrInvalidSessions() {
 
             // Get start time of session check time
             long sessionCheckStart = System.currentTimeMillis();
 
-            logger.debug("Checking for expired sessions...");
+            logger.debug("Checking for expired or invalid sessions...");
 
             // For each session, remove sesions which have expired
             Iterator<Map.Entry<String, GuacamoleSession>> entries = sessionMap.entrySet().iterator();
@@ -129,18 +136,38 @@ public class HashTokenSessionMap implements TokenSessionMap {
                 Map.Entry<String, GuacamoleSession> entry = entries.next();
                 GuacamoleSession session = entry.getValue();
 
-                // Do not expire sessions which are active
-                if (session.hasTunnels())
-                    continue;
+                try {
 
-                // Get elapsed time since last access
-                long age = sessionCheckStart - session.getLastAccessedTime();
+                    // Invalidate any sessions which have been flagged as invalid by extensions
+                    if (!session.isValid()) {
+                        logger.debug(
+                                "Session \"{}\" has been invalidated by an extension.",
+                                entry.getKey());
+                        entries.remove();
+                        session.invalidate();
+                    }
 
-                // If session is too old, evict it and check the next one
-                if (age >= sessionTimeout) {
-                    logger.debug("Session \"{}\" has timed out.", entry.getKey());
-                    entries.remove();
-                    session.invalidate();
+                    // Do not expire sessions which are active
+                    if (session.hasTunnels())
+                        continue;
+
+                    // Get elapsed time since last access
+                    long age = sessionCheckStart - session.getLastAccessedTime();
+
+                    // If session is too old, evict it and check the next one
+                    if (age >= sessionTimeout) {
+                        logger.debug("Session \"{}\" has timed out.", entry.getKey());
+                        entries.remove();
+                        session.invalidate();
+                    }
+
+                }
+                catch (Throwable t) {
+                    logger.error("An unexpected internal error prevented a "
+                            + "session from being invalidated. This should "
+                            + "NOT happen and is likely a bug. Depending on "
+                            + "the nature of the failure, the session may "
+                            + "still be valid.", t);
                 }
 
             }
@@ -149,6 +176,27 @@ public class HashTokenSessionMap implements TokenSessionMap {
             logger.debug("Session check completed in {} ms.",
                     System.currentTimeMillis() - sessionCheckStart);
             
+        }
+
+        @Override
+        public void run() {
+
+            // The evictExpiredOrInvalidSessions() function should already
+            // automatically handle and log all unexpected internal errors,
+            // but wrap the entire call in a try/catch plus additional logging
+            // to ensure that absolutely no errors can result in the entire
+            // thread dying
+            try {
+                evictExpiredOrInvalidSessions();
+            }
+            catch (Throwable t) {
+                logger.error("An unexpected internal error prevented the "
+                        + "session eviction task from completing "
+                        + "successfully. This should NOT happen and is likely "
+                        + "a bug. Sessions that should have expired may "
+                        + "remain valid.", t);
+            }
+
         }
 
     }
@@ -160,12 +208,12 @@ public class HashTokenSessionMap implements TokenSessionMap {
         if (authToken == null)
             return null;
 
-        // Update the last access time and return the GuacamoleSession
-        GuacamoleSession session = sessionMap.get(authToken);
-        if (session != null)
-            session.access();
-
-        return session;
+        // Return the GuacamoleSession having the given auth token (NOTE: We
+        // do not update the access time here, as it is necessary to be able
+        // to retrieve and check the session without causing that session to
+        // be marked as active. Instead, those updates occur as needed when
+        // functions within the GuacamoleSession are invoked.)
+        return sessionMap.get(authToken);
 
     }
 
@@ -188,7 +236,13 @@ public class HashTokenSessionMap implements TokenSessionMap {
 
     @Override
     public void shutdown() {
+
+        // Terminate the automatic session invalidation thread
         executor.shutdownNow();
+
+        // Forcibly invalidate any remaining sessions
+        sessionMap.values().stream().forEach(GuacamoleSession::invalidate);
+
     }
 
 }

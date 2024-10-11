@@ -22,6 +22,8 @@ package org.apache.guacamole.auth.totp.user;
 import com.google.common.io.BaseEncoding;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
+import inet.ipaddr.IPAddress;
+import inet.ipaddr.IPAddressString;
 import java.security.InvalidKeyException;
 import java.util.Collections;
 import java.util.HashMap;
@@ -34,14 +36,18 @@ import org.apache.guacamole.GuacamoleSecurityException;
 import org.apache.guacamole.GuacamoleUnsupportedException;
 import org.apache.guacamole.auth.totp.conf.ConfigurationService;
 import org.apache.guacamole.auth.totp.form.AuthenticationCodeField;
+import org.apache.guacamole.auth.totp.usergroup.TOTPUserGroup;
 import org.apache.guacamole.form.Field;
 import org.apache.guacamole.language.TranslatableGuacamoleClientException;
 import org.apache.guacamole.language.TranslatableGuacamoleInsufficientCredentialsException;
 import org.apache.guacamole.net.auth.AuthenticatedUser;
 import org.apache.guacamole.net.auth.Credentials;
+import org.apache.guacamole.net.auth.Directory;
 import org.apache.guacamole.net.auth.User;
 import org.apache.guacamole.net.auth.UserContext;
+import org.apache.guacamole.net.auth.UserGroup;
 import org.apache.guacamole.net.auth.credentials.CredentialsInfo;
+import org.apache.guacamole.properties.IPAddressListProperty;
 import org.apache.guacamole.totp.TOTPGenerator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -110,18 +116,9 @@ public class UserVerificationService {
 
         // If no key is defined, attempt to generate a new key
         String secret = attributes.get(TOTPUser.TOTP_KEY_SECRET_ATTRIBUTE_NAME);
-        if (secret == null) {
-
-            // Generate random key for user
-            TOTPGenerator.Mode mode = confService.getMode();
-            UserTOTPKey generated = new UserTOTPKey(username,mode.getRecommendedKeyLength());
-            if (setKey(context, generated))
-                return generated;
-
-            // Fail if key cannot be set
-            return null;
-
-        }
+        
+        if (secret == null || secret.isEmpty()) 
+            return generateKey(context, username);
 
         // Parse retrieved base32 key value
         byte[] key;
@@ -141,6 +138,38 @@ public class UserVerificationService {
         boolean confirmed = "true".equals(attributes.get(TOTPUser.TOTP_KEY_CONFIRMED_ATTRIBUTE_NAME));
         return new UserTOTPKey(username, key, confirmed);
 
+    }
+    
+    /**
+     * Generate and set a new key for the specified user and context, returning
+     * the key if the set successfully or null if it fails.
+     * 
+     * @param context
+     *     The UserContext of the user whose TOTP key should be generated and set.
+     *
+     * @param username
+     *     The username of the user associated with the given UserContext.
+     * 
+     * @return
+     *     The generated and set key, or null if the operation failed.
+     * 
+     * @throws GuacamoleException
+     *     If a new key is generated, but the extension storing the associated
+     *     user fails while updating the user account, or if the configuration
+     *     cannot be retrieved.
+     */
+    private UserTOTPKey generateKey(UserContext context, String username)
+            throws GuacamoleException {
+        
+        // Generate random key for user
+        TOTPGenerator.Mode mode = confService.getMode();
+        UserTOTPKey generated = new UserTOTPKey(username,mode.getRecommendedKeyLength());
+        if (setKey(context, generated))
+            return generated;
+
+        // Fail if key cannot be set
+        return null;
+        
     }
 
     /**
@@ -168,7 +197,7 @@ public class UserVerificationService {
 
         // Get mutable set of attributes
         User self = context.self();
-        Map<String, String> attributes = new HashMap<String, String>();
+        Map<String, String> attributes = new HashMap<>();
 
         // Set/overwrite current TOTP key state
         attributes.put(TOTPUser.TOTP_KEY_SECRET_ATTRIBUTE_NAME, BASE32.encode(key.getSecret()));
@@ -205,6 +234,65 @@ public class UserVerificationService {
         return true;
 
     }
+    
+    /**
+     * Checks the user in question, via both UserContext and AuthenticatedUser,
+     * to see if TOTP has been disabled for this user, either directly or via
+     * membership in a group that has had TOTP marked as disabled.
+     * 
+     * @param context
+     *     The UserContext for the user being verified.
+     * 
+     * @param authenticatedUser
+     *     The AuthenticatedUser for the user being verified.
+     * 
+     * @return
+     *     True if TOTP access has been disabled for the user, otherwise
+     *     false.
+     * 
+     * @throws GuacamoleException
+     *     If the extension handling storage fails internally while attempting
+     *     to update the user.
+     */
+    private boolean totpDisabled(UserContext context,
+            AuthenticatedUser authenticatedUser)
+            throws GuacamoleException {
+        
+        // If TOTP is disabled for this user, return, allowing login to continue
+        Map<String, String> myAttributes = context.self().getAttributes();
+        if (myAttributes != null
+                && TOTPUser.TRUTH_VALUE.equals(myAttributes.get(TOTPUser.TOTP_KEY_DISABLED_ATTRIBUTE_NAME))) {
+
+            logger.warn("TOTP validation has been disabled for user \"{}\"",
+                    context.self().getIdentifier());
+            return true;
+
+        }
+        
+        // Check if any effective user groups have TOTP marked as disabled
+        Set<String> userGroups = authenticatedUser.getEffectiveUserGroups();
+        Directory<UserGroup> directoryGroups = context.getPrivileged().getUserGroupDirectory();
+        for (String userGroup : userGroups) {
+            UserGroup thisGroup = directoryGroups.get(userGroup);
+            if (thisGroup == null)
+                continue;
+            
+            Map<String, String> grpAttributes = thisGroup.getAttributes();
+            if (grpAttributes != null 
+                    && TOTPUserGroup.TRUTH_VALUE.equals(grpAttributes.get(TOTPUserGroup.TOTP_KEY_DISABLED_ATTRIBUTE_NAME))) {
+
+                logger.warn("TOTP validation will be bypassed for user \"{}\""
+                            + " because it has been disabled for group \"{}\"",
+                            context.self().getIdentifier(), userGroup);
+                return true;
+
+            }
+        }
+        
+        // TOTP has not been disabled
+        return false;
+        
+    }
 
     /**
      * Verifies the identity of the given user using TOTP. If a authentication
@@ -227,34 +315,58 @@ public class UserVerificationService {
     public void verifyIdentity(UserContext context,
             AuthenticatedUser authenticatedUser) throws GuacamoleException {
 
+        // Pull the original HTTP request used to authenticate
+        Credentials credentials = authenticatedUser.getCredentials();
+        HttpServletRequest request = credentials.getRequest();
+        
+        // Get the current client address
+        IPAddress clientAddr = new IPAddressString(request.getRemoteAddr()).getAddress();
+
+        // Ignore anonymous users
+        if (authenticatedUser.getIdentifier().equals(AuthenticatedUser.ANONYMOUS_IDENTIFIER))
+            return;
+        
+        // Pull address lists to check from configuration. Note that the enforce
+        // list will override the bypass list, which means that, if the client
+        // address happens to be in both lists, Duo MFA will be enforced.
+        List<IPAddress> bypassAddresses = confService.getBypassHosts();
+        List<IPAddress> enforceAddresses = confService.getEnforceHosts();
+        
+        // Check the bypass list for the client address, and set the enforce
+        // flag to the opposite.
+        boolean enforceHost = !(IPAddressListProperty.addressListContains(bypassAddresses, clientAddr));
+        
+        // Only continue processing if the list is not empty
+        if (!enforceAddresses.isEmpty()) {
+            
+            // If client address is not available or invalid, MFA will
+            // be enforced.
+            if (clientAddr == null || !clientAddr.isIPAddress())
+                enforceHost = true;
+            
+            // Check the enforce list and set the flag if the client address
+            // is found in the list.
+            else
+                enforceHost = IPAddressListProperty.addressListContains(enforceAddresses, clientAddr);
+        }
+            
+        // If the enforce flag is not true, bypass TOTP MFA.
+        if (!enforceHost)
+            return;
+        
         // Ignore anonymous users
         String username = authenticatedUser.getIdentifier();
         if (username.equals(AuthenticatedUser.ANONYMOUS_IDENTIFIER))
             return;
 
-        //Check if user is in the group which does not need TOTP
-        User self = context.self();
-        Set<String> groups = new HashSet<String>();
-        Set<String> groupsSelf = self.getUserGroups().getObjects();
-        Set<String> groupsEffective = authenticatedUser.getEffectiveUserGroups();
-        groups.addAll(groupsEffective);
-        groups.addAll(groupsSelf);
-        String disabledGroup = confService.getDisabledGroup();
-        logger.trace("Disabled-Group: \"{}\", groups: \"{}\", size: \"{}\".", disabledGroup, groups, groups.size());
-        if(disabledGroup != null && groups.contains(disabledGroup)){
-            //Disable TOTP
-            logger.debug("User \"{}\": TOTP disabled by group-membership.", username);
+        // Check if TOTP has been disabled for this user
+        if (totpDisabled(context, authenticatedUser))
             return;
-        }
-
+        
         // Ignore users which do not have an associated key
         UserTOTPKey key = getKey(context, username);
         if (key == null)
             return;
-
-        // Pull the original HTTP request used to authenticate
-        Credentials credentials = authenticatedUser.getCredentials();
-        HttpServletRequest request = credentials.getRequest();
 
         // Retrieve TOTP from request
         String code = request.getParameter(AuthenticationCodeField.PARAMETER_NAME);
@@ -266,6 +378,10 @@ public class UserVerificationService {
 
             // If the user hasn't completed enrollment, request that they do
             if (!key.isConfirmed()) {
+                
+                // If the key has not yet been confirmed, generate a new one.
+                key = generateKey(context, username);
+                
                 field.exposeKey(key);
                 throw new TranslatableGuacamoleInsufficientCredentialsException(
                         "TOTP enrollment must be completed before "

@@ -19,11 +19,11 @@
 
 package org.apache.guacamole.rest.tunnel;
 
-import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
 import java.util.Map;
 import java.util.Set;
+import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -105,7 +105,7 @@ public class TunnelCollectionResource {
             throw new GuacamoleResourceNotFoundException("No such tunnel.");
 
         // Return corresponding tunnel resource
-        return tunnelResourceFactory.create(tunnel);
+        return tunnelResourceFactory.create(session.getAuthenticatedUser(), tunnel);
 
     }
 

@@ -19,10 +19,12 @@
 
 package org.apache.guacamole.rest.session;
 
-import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
+import javax.inject.Inject;
 import javax.ws.rs.Consumes;
+import javax.ws.rs.DELETE;
+import javax.ws.rs.HEAD;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -31,6 +33,7 @@ import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.GuacamoleResourceNotFoundException;
 import org.apache.guacamole.GuacamoleSession;
 import org.apache.guacamole.net.auth.UserContext;
+import org.apache.guacamole.rest.auth.AuthenticationService;
 import org.apache.guacamole.rest.tunnel.TunnelCollectionResource;
 import org.apache.guacamole.rest.tunnel.TunnelCollectionResourceFactory;
 
@@ -46,6 +49,18 @@ public class SessionResource {
      * The GuacamoleSession being exposed by this SessionResource.
      */
     private final GuacamoleSession session;
+
+    /**
+     * The authentication token associated with the GuacamoleSession being
+     * exposed by this SessionResource.
+     */
+    private final String token;
+
+    /**
+     * Service for authenticating users and managing their Guacamole sessions.
+     */
+    @Inject
+    private AuthenticationService authenticationService;
 
     /**
      * Factory for creating UserContextResources which expose a given
@@ -65,12 +80,16 @@ public class SessionResource {
      * Creates a new SessionResource which exposes the data within the given
      * GuacamoleSession.
      *
+     * @param token
+     *     The authentication token associated with the given session.
+     *
      * @param session
      *     The GuacamoleSession which should be exposed through this
      *     SessionResource.
      */
     @AssistedInject
-    public SessionResource(@Assisted GuacamoleSession session) {
+    public SessionResource(@Assisted String token, @Assisted GuacamoleSession session) {
+        this.token = token;
         this.session = session;
     }
 
@@ -98,7 +117,7 @@ public class SessionResource {
         UserContext userContext = session.getUserContext(authProviderIdentifier);
 
         // Return a resource exposing the retrieved UserContext
-        return userContextResourceFactory.create(userContext);
+        return userContextResourceFactory.create(session.getAuthenticatedUser(), userContext);
 
     }
 
@@ -147,6 +166,34 @@ public class SessionResource {
     @Path("tunnels")
     public TunnelCollectionResource getTunnelCollectionResource() {
         return tunnelCollectionResourceFactory.create(session);
+    }
+
+    /**
+     * Invalidates the GuacamoleSession exposed by this SessionResource,
+     * including the associated authentication token.
+     *
+     * @throws GuacamoleException
+     *     If the authentication token originally provided when this
+     *     SessionResource was created no longer exists.
+     */
+    @DELETE
+    public void invalidate() throws GuacamoleException {
+
+        // Invalidate session, if it exists
+        if (!authenticationService.destroyGuacamoleSession(token))
+            throw new GuacamoleResourceNotFoundException("No such token.");
+
+    }
+
+    /**
+     * Tests whether this session resource represented a valid session at the
+     * time it was created. This function always succeeds. It is possible for
+     * an HTTP request aimed at this operation to fail, but that failure occurs
+     * further up the chain when locating the session.
+     */
+    @HEAD
+    public void checkValidity() {
+        // Do nothing
     }
 
 }

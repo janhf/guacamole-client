@@ -1,6 +1,6 @@
 {
 
-    "guacamoleVersion" : "1.3.0",
+    "guacamoleVersion" : "1.6.0",
 
     "name"      : "Duo TFA Authentication Backend",
     "namespace" : "duo",
@@ -13,21 +13,13 @@
         "translations/ca.json",
         "translations/de.json",
         "translations/en.json",
+        "translations/fr.json",
         "translations/ja.json",
+        "translations/ko.json",
+        "translations/pl.json",
         "translations/pt.json",
-        "translations/ru.json"
-    ],
-
-    "js" : [
-        "duo.min.js"
-    ],
-
-    "css" : [
-        "duo.min.css"
-    ],
-
-    "resources" : {
-        "templates/duoSignedResponseField.html" : "text/html"
-    }
+        "translations/ru.json",
+        "translations/zh.json"
+    ]
 
 }

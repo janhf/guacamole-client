@@ -33,6 +33,7 @@ import org.apache.guacamole.auth.jdbc.base.ModeledDirectoryObjectService;
 import org.apache.guacamole.GuacamoleClientException;
 import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.GuacamoleUnsupportedException;
+import org.apache.guacamole.auth.jdbc.JDBCEnvironment;
 import org.apache.guacamole.auth.jdbc.base.ActivityRecordModel;
 import org.apache.guacamole.auth.jdbc.base.ActivityRecordSearchTerm;
 import org.apache.guacamole.auth.jdbc.base.ActivityRecordSortPredicate;
@@ -155,6 +156,12 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
      */
     @Inject
     private PasswordPolicyService passwordPolicyService;
+    
+    /**
+     * The server environment for retrieving configuration.
+     */
+    @Inject
+    private JDBCEnvironment environment;
 
     @Override
     protected ModeledDirectoryObjectMapper<UserModel> getObjectMapper() {
@@ -241,7 +248,8 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
             throw new GuacamoleClientException("The username must not be blank.");
         
         // Do not create duplicate users
-        Collection<UserModel> existing = userMapper.select(Collections.singleton(model.getIdentifier()));
+        Collection<UserModel> existing = userMapper.select(Collections.singleton(
+                    model.getIdentifier()), environment.getCaseSensitiveUsernames());
         if (!existing.isEmpty())
             throw new GuacamoleClientException("User \"" + model.getIdentifier() + "\" already exists.");
 
@@ -277,7 +285,8 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
             throw new GuacamoleClientException("The username must not be blank.");
         
         // Check whether such a user is already present
-        UserModel existing = userMapper.selectOne(model.getIdentifier());
+        UserModel existing = userMapper.selectOne(model.getIdentifier(),
+                environment.getCaseSensitiveUsernames());
         if (existing != null) {
 
             // Do not rename to existing user
@@ -337,6 +346,17 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
             throw new GuacamoleUnsupportedException("Deleting your own user is not allowed.");
 
     }
+    
+    @Override
+    public void deleteObject(ModeledAuthenticatedUser user, String identifier)
+        throws GuacamoleException {
+
+        beforeDelete(user, identifier);
+        
+        // Delete object
+        userMapper.delete(identifier, environment.getCaseSensitiveUsernames());
+
+    }
 
     @Override
     protected boolean isValidIdentifier(String identifier) {
@@ -375,7 +395,8 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
         String password = credentials.getPassword();
 
         // Retrieve corresponding user model, if such a user exists
-        UserModel userModel = userMapper.selectOne(username);
+        UserModel userModel = userMapper.selectOne(username,
+                environment.getCaseSensitiveUsernames());
         if (userModel == null)
             return null;
 
@@ -415,12 +436,9 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
     public ModeledUser retrieveUser(AuthenticationProvider authenticationProvider,
             AuthenticatedUser authenticatedUser) throws GuacamoleException {
 
-        // If we already queried this user, return that rather than querying again
-        if (authenticatedUser instanceof ModeledAuthenticatedUser)
-            return ((ModeledAuthenticatedUser) authenticatedUser).getUser();
-
         // Retrieve corresponding user model, if such a user exists
-        UserModel userModel = userMapper.selectOne(authenticatedUser.getIdentifier());
+        UserModel userModel = userMapper.selectOne(authenticatedUser.getIdentifier(),
+                environment.getCaseSensitiveUsernames());
         if (userModel == null)
             return null;
 
@@ -546,7 +564,7 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
      *     A connection record object which is backed by the given model.
      */
     protected ActivityRecord getObjectInstance(ActivityRecordModel model) {
-        return new ModeledActivityRecord(model);
+        return new ModeledActivityRecord(UserRecordSet.UUID_NAMESPACE, model);
     }
 
     /**
@@ -573,32 +591,6 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
     }
 
     /**
-     * Retrieves the login history of the given user, including any active
-     * sessions.
-     *
-     * @param authenticatedUser
-     *     The user retrieving the login history.
-     *
-     * @param user
-     *     The user whose history is being retrieved.
-     *
-     * @return
-     *     The login history of the given user, including any active sessions.
-     *
-     * @throws GuacamoleException
-     *     If permission to read the login history is denied.
-     */
-    public List<ActivityRecord> retrieveHistory(ModeledAuthenticatedUser authenticatedUser,
-            ModeledUser user) throws GuacamoleException {
-
-        String username = user.getIdentifier();
-        
-        return retrieveHistory(username, authenticatedUser, Collections.emptyList(),
-                Collections.emptyList(), Integer.MAX_VALUE);
-
-    }
-
-    /**
      * Retrieves user login history records matching the given criteria.
      * Retrieves up to <code>limit</code> user history records matching the
      * given terms and sorted by the given predicates. Only history records
@@ -610,6 +602,11 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
      * 
      * @param user
      *     The user retrieving the login history.
+     *
+     * @param recordIdentifier
+     *     The identifier of the specific history record to retrieve, if not
+     *     all matching records. Search terms, etc. will still be applied to
+     *     the single record.
      *
      * @param requiredContents
      *     The search terms that must be contained somewhere within each of the
@@ -629,61 +626,29 @@ public class UserService extends ModeledDirectoryObjectService<ModeledUser, User
      *     If permission to read the user login history is denied.
      */
     public List<ActivityRecord> retrieveHistory(String username,
-            ModeledAuthenticatedUser user,
+            ModeledAuthenticatedUser user, String recordIdentifier,
             Collection<ActivityRecordSearchTerm> requiredContents,
             List<ActivityRecordSortPredicate> sortPredicates, int limit)
             throws GuacamoleException {
 
         List<ActivityRecordModel> searchResults;
 
-        // Bypass permission checks if the user is privileged
-        if (user.isPrivileged())
-            searchResults = userRecordMapper.search(username, requiredContents,
-                    sortPredicates, limit);
+        // Bypass permission checks if the user is privileged or has System-level audit permissions
+        if (user.isPrivileged() || user.getUser().getEffectivePermissions().getSystemPermissions().hasPermission(SystemPermission.Type.AUDIT))
+            searchResults = userRecordMapper.search(username, recordIdentifier,
+                    requiredContents, sortPredicates, limit,
+                    environment.getCaseSensitiveUsernames());
 
         // Otherwise only return explicitly readable history records
         else
             searchResults = userRecordMapper.searchReadable(username, 
-                    user.getUser().getModel(),
-                    requiredContents, sortPredicates, limit, user.getEffectiveUserGroups());
+                    user.getUser().getModel(), recordIdentifier,
+                    requiredContents, sortPredicates, limit,
+                    user.getEffectiveUserGroups(),
+                    environment.getCaseSensitiveUsernames());
 
         return getObjectInstances(searchResults);
 
-    }
-    
-    /**
-     * Retrieves user login history records matching the given criteria.
-     * Retrieves up to <code>limit</code> user history records matching the
-     * given terms and sorted by the given predicates. Only history records
-     * associated with data that the given user can read are returned.
-     * 
-     * @param user
-     *     The user retrieving the login history.
-     *
-     * @param requiredContents
-     *     The search terms that must be contained somewhere within each of the
-     *     returned records.
-     *
-     * @param sortPredicates
-     *     A list of predicates to sort the returned records by, in order of
-     *     priority.
-     *
-     * @param limit
-     *     The maximum number of records that should be returned.
-     *
-     * @return
-     *     The login history of the given user, including any active sessions.
-     *
-     * @throws GuacamoleException
-     *     If permission to read the user login history is denied.
-     */
-    public List<ActivityRecord> retrieveHistory(ModeledAuthenticatedUser user,
-            Collection<ActivityRecordSearchTerm> requiredContents,
-            List<ActivityRecordSortPredicate> sortPredicates, int limit)
-            throws GuacamoleException {
-        
-        return retrieveHistory(null, user, requiredContents, sortPredicates, limit);
-        
     }
 
 }

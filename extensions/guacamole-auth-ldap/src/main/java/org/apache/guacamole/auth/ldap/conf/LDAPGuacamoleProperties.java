@@ -84,8 +84,8 @@ public class LDAPGuacamoleProperties {
      * one attribute, and the concatenation of that attribute and the value of
      * LDAP_USER_BASE_DN must equal the user's full DN.
      */
-    public static final StringListProperty LDAP_USERNAME_ATTRIBUTE =
-            new StringListProperty() {
+    public static final StringGuacamoleProperty LDAP_USERNAME_ATTRIBUTE =
+            new StringGuacamoleProperty() {
 
         @Override
         public String getName() { return "ldap-username-attribute"; }
@@ -97,8 +97,8 @@ public class LDAPGuacamoleProperties {
      * attributes must be present within each Guacamole user group's record in
      * the LDAP directory for that group to be visible.
      */
-    public static final StringListProperty LDAP_GROUP_NAME_ATTRIBUTE =
-            new StringListProperty() {
+    public static final StringGuacamoleProperty LDAP_GROUP_NAME_ATTRIBUTE =
+            new StringGuacamoleProperty() {
 
         @Override
         public String getName() { return "ldap-group-name-attribute"; }
@@ -128,13 +128,16 @@ public class LDAPGuacamoleProperties {
     };
 
     /**
-     * The DN of the user that the LDAP authentication should bind as when
-     * searching for the user accounts of users attempting to log in. If not
-     * specified, the DNs of users attempting to log in will be derived from
-     * the LDAP_BASE_DN and LDAP_USERNAME_ATTRIBUTE directly.
+     * The user that the LDAP extension should bind as when searching for the
+     * accounts of users attempting to log in. The format of this parameter
+     * will vary based on the LDAP server implementation - often it is expected
+     * to be in full LDAP DN format; however various LDAP server implementations
+     * allow this to be in other formats (e.g. Active Directory allows
+     * User Principal Name, or UPN, format). For this reason the configuration
+     * allows this to be any string.
      */
-    public static final LdapDnGuacamoleProperty LDAP_SEARCH_BIND_DN =
-            new LdapDnGuacamoleProperty() {
+    public static final StringGuacamoleProperty LDAP_SEARCH_BIND_DN =
+            new StringGuacamoleProperty() {
 
         @Override
         public String getName() { return "ldap-search-bind-dn"; }
@@ -166,6 +169,14 @@ public class LDAPGuacamoleProperties {
         @Override
         public String getName() { return "ldap-encryption-method"; }
 
+    };
+    
+    public static final EnumGuacamoleProperty<LDAPSSLProtocol> LDAP_SSL_PROTOCOL =
+            new EnumGuacamoleProperty<LDAPSSLProtocol>(LDAPSSLProtocol.class) {
+    
+        @Override
+        public String getName() { return "ldap-ssl-protocol"; }
+                
     };
 
     /**
@@ -208,6 +219,17 @@ public class LDAPGuacamoleProperties {
     };
 
     /**
+     * A search filter to apply to group LDAP queries.
+     */
+    public static final LdapFilterGuacamoleProperty LDAP_GROUP_SEARCH_FILTER =
+            new LdapFilterGuacamoleProperty() {
+
+        @Override
+        public String getName() { return "ldap-group-search-filter"; }
+
+    };
+
+    /**
      * Whether or not we should follow referrals.
      */
     public static final BooleanGuacamoleProperty LDAP_FOLLOW_REFERRALS =
@@ -241,11 +263,22 @@ public class LDAPGuacamoleProperties {
     };
 
     /**
+     * Number of milliseconds to wait for responses from the LDAP server.
+     */
+    public static final IntegerGuacamoleProperty LDAP_NETWORK_TIMEOUT =
+            new IntegerGuacamoleProperty() {
+
+        @Override
+        public String getName() { return "ldap-network-timeout"; }
+
+    };
+
+    /**
      * Custom attribute or attributes to query from Guacamole user's record in
      * the LDAP directory.
      */
-    public static final StringListProperty LDAP_USER_ATTRIBUTES =
-            new StringListProperty() {
+    public static final StringGuacamoleProperty LDAP_USER_ATTRIBUTES =
+            new StringGuacamoleProperty() {
 
         @Override
         public String getName() { return "ldap-user-attributes"; }
@@ -272,6 +305,18 @@ public class LDAPGuacamoleProperties {
         @Override
         public String getName() { return "ldap-member-attribute-type"; }
 
+    };
+    
+    /**
+     * A property used to configure whether or not usernames within the LDAP
+     * module should be treated as case-sensitive.
+     */
+    public static final BooleanGuacamoleProperty LDAP_CASE_SENSITIVE_USERNAMES =
+            new BooleanGuacamoleProperty() {
+    
+        @Override
+        public String getName() { return "ldap-case-sensitive-usernames"; }
+                
     };
 
 }

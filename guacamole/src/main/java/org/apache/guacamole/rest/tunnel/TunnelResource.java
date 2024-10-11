@@ -19,11 +19,12 @@
 
 package org.apache.guacamole.rest.tunnel;
 
-import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
+import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DefaultValue;
+import javax.ws.rs.GET;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
@@ -31,8 +32,11 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.MediaType;
 import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.GuacamoleResourceNotFoundException;
+import org.apache.guacamole.environment.Environment;
 import org.apache.guacamole.net.auth.ActiveConnection;
+import org.apache.guacamole.net.auth.AuthenticatedUser;
 import org.apache.guacamole.net.auth.UserContext;
+import org.apache.guacamole.protocols.ProtocolInfo;
 import org.apache.guacamole.rest.activeconnection.APIActiveConnection;
 import org.apache.guacamole.rest.directory.DirectoryObjectResource;
 import org.apache.guacamole.rest.directory.DirectoryObjectResourceFactory;
@@ -53,9 +57,20 @@ public class TunnelResource {
     private static final String DEFAULT_MEDIA_TYPE = MediaType.APPLICATION_OCTET_STREAM;
 
     /**
+     * The user that is accessing this resource.
+     */
+    private final AuthenticatedUser authenticatedUser;
+    
+    /**
      * The tunnel that this TunnelResource represents.
      */
     private final UserTunnel tunnel;
+
+    /**
+     * The Guacamole server environment.
+     */
+    @Inject
+    private Environment environment;
 
     /**
      * A factory which can be used to create instances of resources representing
@@ -69,11 +84,16 @@ public class TunnelResource {
      * Creates a new TunnelResource which exposes the operations and
      * subresources available for the given tunnel.
      *
+     * @param authenticatedUser
+     *     The user that is accessing this resource.
+     *
      * @param tunnel
      *     The tunnel that this TunnelResource should represent.
      */
     @AssistedInject
-    public TunnelResource(@Assisted UserTunnel tunnel) {
+    public TunnelResource(@Assisted AuthenticatedUser authenticatedUser,
+            @Assisted UserTunnel tunnel) {
+        this.authenticatedUser = authenticatedUser;
         this.tunnel = tunnel;
     }
 
@@ -101,8 +121,41 @@ public class TunnelResource {
             throw new GuacamoleResourceNotFoundException("No readable active connection for tunnel.");
 
         // Return the associated ActiveConnection as a resource
-        return activeConnectionResourceFactory.create(userContext,
+        return activeConnectionResourceFactory.create(authenticatedUser, userContext,
                 userContext.getActiveConnectionDirectory(), activeConnection);
+
+    }
+
+    /**
+     * Retrieves the underlying protocol used by the connection associated with
+     * this tunnel. If possible, the parameters available for that protocol are
+     * retrieved, as well.
+     *
+     * @return
+     *     A ProtocolInfo object describing the protocol used by the connection
+     *     associated with this tunnel.
+     *
+     * @throws GuacamoleException
+     *     If the protocol used by the connection associated with this tunnel
+     *     cannot be determined.
+     */
+    @GET
+    @Path("protocol")
+    public ProtocolInfo getProtocol() throws GuacamoleException {
+
+        // Pull protocol name from underlying socket
+        String protocol = tunnel.getSocket().getProtocol();
+        if (protocol == null)
+            throw new GuacamoleResourceNotFoundException("Protocol of tunnel is not known/exposed.");
+
+        // If there is no such protocol defined, provide as much info as is
+        // known (just the name)
+        ProtocolInfo info = environment.getProtocol(protocol);
+        if (info == null)
+            return new ProtocolInfo(protocol);
+
+        // All protocol information for this tunnel is known
+        return info;
 
     }
 

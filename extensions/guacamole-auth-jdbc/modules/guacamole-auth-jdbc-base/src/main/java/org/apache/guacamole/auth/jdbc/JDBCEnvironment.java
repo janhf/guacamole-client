@@ -20,25 +20,23 @@
 package org.apache.guacamole.auth.jdbc;
 
 import org.apache.guacamole.GuacamoleException;
-import org.apache.guacamole.environment.LocalEnvironment;
 import org.apache.guacamole.auth.jdbc.security.PasswordPolicy;
+import org.apache.guacamole.environment.DelegatingEnvironment;
+import org.apache.guacamole.environment.LocalEnvironment;
 import org.apache.ibatis.session.SqlSession;
 
 /**
  * A JDBC-specific implementation of Environment that defines generic properties
  * intended for use within JDBC based authentication providers.
  */
-public abstract class JDBCEnvironment extends LocalEnvironment {
-    
+public abstract class JDBCEnvironment extends DelegatingEnvironment {
+
     /**
      * Constructs a new JDBCEnvironment using an underlying LocalEnviroment to
      * read properties from the file system.
-     * 
-     * @throws GuacamoleException
-     *     If an error occurs while setting up the underlying LocalEnvironment.
      */
-    public JDBCEnvironment() throws GuacamoleException {
-        super();
+    public JDBCEnvironment() {
+        super(LocalEnvironment.getInstance());
     }
 
     /**
@@ -70,12 +68,25 @@ public abstract class JDBCEnvironment extends LocalEnvironment {
     public abstract int getAbsoluteMaxConnections() throws GuacamoleException;
 
     /**
-     * Returns the default maximum number of concurrent connections to allow to 
-     * any one connection, unless specified differently on an individual 
-     * connection. Zero denotes unlimited.
-     * 
+     * Returns the maximum number of identifiers/parameters to be 
+     * included in a single batch when executing SQL statements.
+     *
      * @return
-     *     The default maximum allowable number of concurrent connections 
+     *     The maximum number of identifiers/parameters to be included 
+     *     in a single batch.
+     *
+     * @throws GuacamoleException
+     *     If an error occurs while retrieving the property.
+     */
+    public abstract int getBatchSize() throws GuacamoleException;
+
+    /**
+     * Returns the default maximum number of concurrent connections to allow to
+     * any one connection, unless specified differently on an individual
+     * connection. Zero denotes unlimited.
+     *
+     * @return
+     *     The default maximum allowable number of concurrent connections
      *     to any connection.
      *
      * @throws GuacamoleException
@@ -84,10 +95,10 @@ public abstract class JDBCEnvironment extends LocalEnvironment {
     public abstract int getDefaultMaxConnections() throws GuacamoleException;
 
     /**
-     * Returns the default maximum number of concurrent connections to allow to 
-     * any one connection group, unless specified differently on an individual 
+     * Returns the default maximum number of concurrent connections to allow to
+     * any one connection group, unless specified differently on an individual
      * connection group. Zero denotes unlimited.
-     * 
+     *
      * @return
      *     The default maximum allowable number of concurrent connections
      *     to any connection group.
@@ -97,12 +108,12 @@ public abstract class JDBCEnvironment extends LocalEnvironment {
      */
     public abstract int getDefaultMaxGroupConnections()
             throws GuacamoleException;
-    
+
     /**
-     * Returns the default maximum number of concurrent connections to allow to 
+     * Returns the default maximum number of concurrent connections to allow to
      * any one connection by an individual user, unless specified differently on
      * an individual connection. Zero denotes unlimited.
-     * 
+     *
      * @return
      *     The default maximum allowable number of concurrent connections to
      *     any connection by an individual user.
@@ -112,12 +123,12 @@ public abstract class JDBCEnvironment extends LocalEnvironment {
      */
     public abstract int getDefaultMaxConnectionsPerUser()
             throws GuacamoleException;
-    
+
     /**
-     * Returns the default maximum number of concurrent connections to allow to 
-     * any one connection group by an individual user, unless specified 
+     * Returns the default maximum number of concurrent connections to allow to
+     * any one connection group by an individual user, unless specified
      * differently on an individual connection group. Zero denotes unlimited.
-     * 
+     *
      * @return
      *     The default maximum allowable number of concurrent connections to
      *     any connection group by an individual user.
@@ -151,21 +162,114 @@ public abstract class JDBCEnvironment extends LocalEnvironment {
      *     true if the database supports recursive queries, false otherwise.
      */
     public abstract boolean isRecursiveQuerySupported(SqlSession session);
-    
+
     /**
      * Returns a boolean value representing whether or not the JDBC module
      * should automatically create accounts within the database for users that
      * are successfully authenticated via other extensions. Returns true if
      * accounts should be auto-created, otherwise returns false.
-     * 
+     *
      * @return
      *     true if user accounts should be automatically created within the
      *     database when authentication succeeds from another extension;
      *     otherwise false.
-     * 
-     * @throws GuacamoleException 
+     *
+     * @throws GuacamoleException
      *     If guacamole.properties cannot be parsed.
      */
     public abstract boolean autoCreateAbsentAccounts() throws GuacamoleException;
+
+    /**
+     * Returns the username that should be used when authenticating with the
+     * database containing the Guacamole authentication tables.
+     *
+     * @return
+     *     The username for the database.
+     *
+     * @throws GuacamoleException
+     *     If an error occurs while retrieving the property value, or if the
+     *     value was not set, as this property is required.
+     */
+    public abstract String getUsername() throws GuacamoleException;
+
+    /**
+     * Returns the password that should be used authenticating with the
+     * database containing the Guacamole authentication tables.
+     *
+     * @return
+     *     The password for the database.
+     *
+     * @throws GuacamoleException
+     *     If an error occurs while retrieving the property value, or if the
+     *     value was not set, as this property is required.
+     */
+    public abstract String getPassword() throws GuacamoleException;
+
+    /**
+     * Returns whether the given Java class is defined within the classpath.
+     *
+     * @param classname
+     *     The name of the Java class to check.
+     *
+     * @return
+     *     true if the given Java class is present within the classpath, false
+     *     otherwise.
+     */
+    public static boolean isClassDefined(String classname) {
+        try {
+            Class.forName(classname, false, JDBCEnvironment.class.getClassLoader());
+            return true;
+        }
+        catch (ClassNotFoundException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Returns a boolean value representing whether or not the JDBC module
+     * should automatically track connection history for external connections,
+     * i.e. connections not originated from within the JDBC auth provider
+     * itself.
+     *
+     * @return
+     *     true if connection history should be tracked for connections that
+     *     do not originate from within this JDBC auth provider, false otherwise.
+     *
+     * @throws GuacamoleException
+     *     If guacamole.properties cannot be parsed.
+     */
+    public abstract boolean trackExternalConnectionHistory() throws GuacamoleException;
+
+    /**
+     * Returns a boolean value representing whether access time windows should
+     * be enforced for active connections - i.e. whether a currently-connected
+     * user should be disconnected upon the closure of an access window.
+     *
+     * @return
+     *     true if a connected user should be disconnected upon an access time
+     *     window closing, false otherwise.
+     *
+     * @throws GuacamoleException
+     *     If guacamole.properties cannot be parsed.
+     */
+    public abstract boolean enforceAccessWindowsForActiveSessions() throws GuacamoleException;
+
+    /**
+     * Returns true if the JDBC batch executor should be used by default, false
+     * otherwise. The batch executor allows repeated updates to be batched
+     * together for improved performance. 
+     * See https://mybatis.org/mybatis-3/java-api.html#sqlSessions
+     *
+     * @return
+     *     true if the batch executor should be used by default, false otherwise.
+     */
+    public boolean shouldUseBatchExecutor() {
+
+        // Unless otherwise overwritten due to implementation-specific problems,
+        // all JDBC extensions should use the batch executor if possible to
+        // ensure the best performance for repetitive queries
+        return true;
+
+    }
 
 }

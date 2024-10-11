@@ -19,10 +19,10 @@
 
 package org.apache.guacamole.tunnel;
 
-import com.google.inject.Inject;
-import com.google.inject.Singleton;
 import java.util.List;
 import java.util.Map;
+import javax.inject.Inject;
+import javax.inject.Singleton;
 import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.GuacamoleResourceNotFoundException;
 import org.apache.guacamole.GuacamoleSession;
@@ -340,6 +340,11 @@ public class TunnelRequestService {
         GuacamoleSession session = authenticationService.getGuacamoleSession(authToken);
         AuthenticatedUser authenticatedUser = session.getAuthenticatedUser();
         UserContext userContext = session.getUserContext(authProviderIdentifier);
+        
+        // Attempt to get the user's name and set it for the tunnel client.
+        String name = authenticatedUser.getIdentifier();
+        if (name != null)
+            info.setName(name);
 
         try {
 

@@ -19,10 +19,10 @@
 
 package org.apache.guacamole.rest.connection;
 
-import com.google.inject.Inject;
 import com.google.inject.assistedinject.Assisted;
 import com.google.inject.assistedinject.AssistedInject;
 import java.util.Map;
+import javax.inject.Inject;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -31,6 +31,8 @@ import javax.ws.rs.core.MediaType;
 import org.apache.guacamole.GuacamoleException;
 import org.apache.guacamole.GuacamoleSecurityException;
 import org.apache.guacamole.GuacamoleUnsupportedException;
+import org.apache.guacamole.net.auth.ActivityRecordSet;
+import org.apache.guacamole.net.auth.AuthenticatedUser;
 import org.apache.guacamole.net.auth.Connection;
 import org.apache.guacamole.net.auth.Directory;
 import org.apache.guacamole.net.auth.Permissions;
@@ -64,17 +66,6 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
      * Logger for this class.
      */
     private static final Logger logger = LoggerFactory.getLogger(ConnectionResource.class);
-    
-    /**
-     * The UserContext associated with the Directory which contains the
-     * Connection exposed by this resource.
-     */
-    private final UserContext userContext;
-
-    /**
-     * The Connection object represented by this ConnectionResource.
-     */
-    private final Connection connection;
 
     /**
      * A factory which can be used to create instances of resources representing
@@ -87,6 +78,9 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
     /**
      * Creates a new ConnectionResource which exposes the operations and
      * subresources available for the given Connection.
+     *
+     * @param authenticatedUser
+     *     The user that is accessing this resource.
      *
      * @param userContext
      *     The UserContext associated with the given Directory.
@@ -102,13 +96,12 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
      *     object given.
      */
     @AssistedInject
-    public ConnectionResource(@Assisted UserContext userContext,
+    public ConnectionResource(@Assisted AuthenticatedUser authenticatedUser,
+            @Assisted UserContext userContext,
             @Assisted Directory<Connection> directory,
             @Assisted Connection connection,
             DirectoryObjectTranslator<Connection, APIConnection> translator) {
-        super(userContext, directory, connection, translator);
-        this.userContext = userContext;
-        this.connection = connection;
+        super(authenticatedUser, userContext, Connection.class, directory, connection, translator);
     }
 
     /**
@@ -125,8 +118,10 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
     public Map<String, String> getConnectionParameters()
             throws GuacamoleException {
 
+        Connection connection = getInternalObject();
+
         // Pull effective permissions
-        Permissions effective = userContext.self().getEffectivePermissions();
+        Permissions effective = getUserContext().self().getEffectivePermissions();
 
         // Retrieve permission sets
         SystemPermissionSet systemPermissions = effective.getSystemPermissions();
@@ -161,9 +156,12 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
     public ConnectionHistoryResource getConnectionHistory()
             throws GuacamoleException {
 
+        Connection connection = getInternalObject();
+
         // Try the current getConnectionHistory() method, first, for connection history.
         try {
-            return new ConnectionHistoryResource(connection.getConnectionHistory());
+            return new ConnectionHistoryResource(connection.getConnectionHistory()
+                    .sort(ActivityRecordSet.SortableProperty.START_DATE, true));
         }
         catch (GuacamoleUnsupportedException e) {
             logger.debug("Call to getConnectionHistory() is unsupported, falling back to getHistory().", e);
@@ -199,6 +197,9 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
     public DirectoryResource<SharingProfile, APISharingProfile>
             getSharingProfileDirectoryResource() throws GuacamoleException {
 
+        UserContext userContext = getUserContext();
+        Connection connection = getInternalObject();
+                
         // Produce subset of all SharingProfiles, containing only those which
         // are associated with this connection
         Directory<SharingProfile> sharingProfiles = new DirectoryView<>(
@@ -207,7 +208,7 @@ public class ConnectionResource extends DirectoryObjectResource<Connection, APIC
         );
 
         // Return a new resource which provides access to only those SharingProfiles
-        return sharingProfileDirectoryResourceFactory.create(userContext, sharingProfiles);
+        return sharingProfileDirectoryResourceFactory.create(getAuthenticatedUser(), userContext, sharingProfiles);
 
     }
 

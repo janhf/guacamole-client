@@ -78,6 +78,26 @@ public class SchemaResource {
     }
 
     /**
+     * Retrieves the possible user preference attributes of a user object.
+     *
+     * @return
+     *     A collection of forms which describe the possible preference attributes of a
+     *     user object.
+     *
+     * @throws GuacamoleException
+     *     If an error occurs while retrieving the possible attributes.
+     */
+    @GET
+    @Path("userPreferenceAttributes")
+    public Collection<Form> getUserPreferenceAttributes()
+            throws GuacamoleException {
+
+        // Retrieve all possible user preference attributes
+        return userContext.getUserPreferenceAttributes();
+
+    }
+
+    /**
      * Retrieves the possible attributes of a user group object.
      *
      * @return
@@ -171,7 +191,7 @@ public class SchemaResource {
     public Map<String, ProtocolInfo> getProtocols() throws GuacamoleException {
 
         // Get and return a map of all protocols.
-        Environment env = new LocalEnvironment();
+        Environment env = LocalEnvironment.getInstance();
         return env.getProtocols();
 
     }

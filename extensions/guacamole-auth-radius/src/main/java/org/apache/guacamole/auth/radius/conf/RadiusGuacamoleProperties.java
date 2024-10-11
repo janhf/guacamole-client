@@ -190,6 +190,32 @@ public class RadiusGuacamoleProperties {
         public String getName() { return "radius-eap-ttls-inner-protocol"; }
 
     };
+    
+    /**
+     * Manually configure the NAS IP address that the RADIUS client will pass
+     * to the server when requesting authentication. Normally this is automatically
+     * determined by gathering the IP address of the system on which Guacamole
+     * is running; however, there are certain scenarios (as in running in a
+     * Docker container) where specifying this manually may be useful.
+     */
+    public static final StringGuacamoleProperty RADIUS_NAS_IP = new StringGuacamoleProperty() {
+        
+        @Override
+        public String getName() { return "radius-nas-ip"; }
+        
+    };
+    
+    /**
+     * A property used to configure whether or not usernames within the RADIUS
+     * module should be treated as case-sensitive.
+     */
+    public static final BooleanGuacamoleProperty RADIUS_CASE_SENSITIVE_USERNAMES =
+            new BooleanGuacamoleProperty() {
+        
+        @Override
+        public String getName() { return "radius-case-sensitive-usernames"; }
+        
+    };
 
 
 }
